@@ -2,488 +2,182 @@
 <html lang="it">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0" />
-  <title>Viewer 3D - Giroscopio e Camminata Reale</title>
-  <style>
-    * { 
-      box-sizing: border-box; 
-      margin: 0; 
-      padding: 0; 
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      touch-action: none;
-    }
-    body { background: #15151a; color: #fff; overflow: hidden; }
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Viewer 3D con ARKit & ARCore</title>
 
-    #webgl-canvas {
+  <!-- Componente ufficiale Web 3D & AR di Google (supporta ARKit su iOS e ARCore su Android) -->
+  <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.5.0/model-viewer.min.js"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    body {
+      background-color: #121216;
+      color: #ffffff;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Area principale del viewer 3D */
+    model-viewer {
       width: 100vw;
       height: 100vh;
-      display: block;
-    }
-
-    /* Riquadro istruzioni e contatore passi */
-    .controls-overlay {
-      position: fixed;
-      top: 14px;
-      left: 14px;
-      background: rgba(15, 15, 20, 0.85);
-      border: 1px solid rgba(255, 255, 255, 0.15);
-      border-radius: 8px;
-      padding: 10px 14px;
-      font-size: 0.8rem;
-      line-height: 1.4;
-      user-select: none;
-      z-index: 100;
-      backdrop-filter: blur(4px);
-      pointer-events: none;
-    }
-    .controls-overlay b { color: #38bdf8; }
-    .step-badge {
-      display: inline-block;
-      margin-top: 4px;
-      background: #0284c7;
-      color: #fff;
-      padding: 2px 8px;
-      border-radius: 12px;
-      font-weight: bold;
+      background: radial-gradient(circle at 50% 50%, #20202a 0%, #121216 100%);
+      --poster-color: transparent;
     }
 
     /* Barra superiore comandi */
-    .top-right-bar {
+    .top-bar {
       position: fixed;
-      top: 14px;
-      right: 14px;
+      top: 16px;
+      left: 16px;
+      right: 16px;
       display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
+      justify-content: space-between;
+      align-items: center;
       z-index: 100;
-      justify-content: flex-end;
+      pointer-events: none;
     }
 
-    .btn-ui {
-      display: inline-block;
+    .badge-info {
+      background: rgba(18, 18, 24, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      padding: 8px 14px;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      backdrop-filter: blur(6px);
+      pointer-events: auto;
+    }
+    .badge-info b { color: #38bdf8; }
+
+    .btn-file {
       background: #2563eb;
-      color: #fff;
-      padding: 9px 12px;
+      color: white;
+      padding: 9px 15px;
       border-radius: 8px;
       font-weight: 600;
+      font-size: 0.85rem;
       cursor: pointer;
-      font-size: 0.8rem;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.35);
       border: 1px solid rgba(255,255,255,0.2);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      pointer-events: auto;
     }
-    .btn-ui:hover { background: #1d4ed8; }
+    .btn-file:hover { background: #1d4ed8; }
+    #fileInput { display: none; }
 
-    .btn-motion {
-      background: #059669;
-    }
-    .btn-motion:hover { background: #047857; }
-    .btn-motion.active {
-      background: #dc2626;
-    }
-
-    #modelInput { display: none; }
-
-    #loading {
+    /* Pulsante personalizzato per entrare in ARKit */
+    #ar-button {
+      background-color: #ffffff;
+      color: #0f172a;
+      border-radius: 30px;
+      border: none;
       position: fixed;
-      top: 50%;
+      bottom: 24px;
       left: 50%;
-      transform: translate(-50%, -50%);
-      background: rgba(0, 0, 0, 0.9);
-      padding: 18px 26px;
-      border-radius: 10px;
-      font-size: 1rem;
-      z-index: 200;
-      text-align: center;
-      border: 1px solid rgba(255, 255, 255, 0.2);
+      transform: translateX(-50%);
+      padding: 12px 24px;
+      font-size: 0.95rem;
+      font-weight: 700;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      z-index: 100;
+      transition: transform 0.2s, background-color 0.2s;
+    }
+    #ar-button:hover {
+      background-color: #f1f5f9;
+      transform: translateX(-50%) scale(1.03);
+    }
+    #ar-button:active {
+      transform: translateX(-50%) scale(0.97);
+    }
+
+    /* Stile indicatore di puntamento AR */
+    #ar-prompt {
+      position: absolute;
+      left: 50%;
+      bottom: 90px;
+      transform: translateX(-50%);
       display: none;
     }
+    model-viewer[ar-status="session-started"] > #ar-prompt {
+      display: block;
+    }
   </style>
-
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 </head>
 <body>
 
-  <div id="loading">Caricamento modello 3D in corso... (0%)</div>
-
-  <div class="controls-overlay">
-    <b>Controlli:</b><br />
-    • <b>PC</b>: WASD + Mouse<br />
-    • <b>Mobile</b>: Touch gestures (Pinch/Pan)<br />
-    • <b>Cammina & Giroscopio</b>: Attiva col tasto verde<br />
-    <span class="step-badge" id="stepCounter">Passi rilevati: 0</span>
+  <div class="top-bar">
+    <div class="badge-info">
+      📱 <b>ARKit & ARCore</b> supportati
+    </div>
+    <div>
+      <label for="fileInput" class="btn-file">📁 Carica .GLB</label>
+      <input type="file" id="fileInput" accept=".glb,.gltf" />
+    </div>
   </div>
 
-  <div class="top-right-bar">
-    <button id="motionBtn" class="btn-ui btn-motion">🚶 Attiva Camminata & Giroscopio</button>
-    <label for="modelInput" class="btn-ui">📁 Carica .GLB</label>
-    <input type="file" id="modelInput" accept=".glb,.gltf" />
-  </div>
+  <!-- 
+    Attributi ARKit / ARCore chiave:
+    - ar: abilita la realtà aumentata
+    - ar-modes="webxr scene-viewer quick-look":
+        * quick-look = ARKit nativo per iOS (iPhone/iPad)
+        * scene-viewer / webxr = ARCore per Android
+    - camera-controls: rotazione e zoom fluido con dita o mouse
+    - shadow-intensity: proietta l'ombra del modello sul pavimento reale
+  -->
+  <model-viewer id="viewer"
+    src="modello.glb"
+    alt="Modello 3D con ARKit"
+    ar
+    ar-modes="webxr scene-viewer quick-look"
+    ar-scale="auto"
+    camera-controls
+    touch-action="pan-y"
+    shadow-intensity="1.5"
+    shadow-softness="0.8"
+    exposure="1.0"
+    auto-rotate>
 
-  <div id="webgl-canvas"></div>
+    <!-- Pulsante AR personalizzato -->
+    <button slot="ar-button" id="ar-button">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4 8V4m0 0h4M4 4l5 5m11-5h-4m4 0v4m0-4l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/>
+      </svg>
+      Vedi nel tuo spazio reale (AR)
+    </button>
+
+  </model-viewer>
 
   <script>
-    var scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x15151a);
+    var viewer = document.getElementById('viewer');
+    var fileInput = document.getElementById('fileInput');
 
-    var camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-    var initialPos = new THREE.Vector3(0, 1.7, 5); // Altezza occhi persona reale (1.70m)
-    camera.position.copy(initialPos);
-
-    var container = document.getElementById('webgl-canvas');
-    var renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "default" });
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
-    container.appendChild(renderer.domElement);
-
-    // Illuminazione
-    var ambientLight = new THREE.AmbientLight(0xffffff, 1.0);
-    scene.add(ambientLight);
-    var dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-    dirLight.position.set(6, 12, 8);
-    scene.add(dirLight);
-
-    // Griglia pavimento estesa per camminare
-    var grid = new THREE.GridHelper(80, 80, 0x00f0ff, 0x333344);
-    scene.add(grid);
-
-    // Cubo segnaposto iniziale
-    var boxGeo = new THREE.BoxGeometry(1.2, 1.2, 1.2);
-    var boxMat = new THREE.MeshStandardMaterial({ color: 0x3b82f6 });
-    var placeholder = new THREE.Mesh(boxGeo, boxMat);
-    placeholder.position.y = 0.6;
-    scene.add(placeholder);
-
-    var currentModel = null;
-    var yaw = 0, pitch = 0;
-
-    // --- SENSORI: GIROSCOPIO E RILEVATORE PASSI (STEP DETECTION) ---
-    var isTrackingActive = false;
-    var gyroBaseAlpha = null;
-    var motionBtn = document.getElementById('motionBtn');
-    var stepCounterEl = document.getElementById('stepCounter');
-    var stepCount = 0;
-
-    // Parametri per il filtro del pedometro inerziale
-    var lastAccelMagnitude = 0;
-    var stepThreshold = 1.35; // Soglia picco accelerazione per rilevare il passo
-    var lastStepTime = 0;
-    var stepStrideLength = 0.65; // Lunghezza media di un passo (0.65 metri)
-    var targetForwardStepMove = 0;
-
-    // 1. Orientamento (Giroscopio)
-    function handleOrientation(event) {
-      if (!isTrackingActive) return;
-      if (event.alpha === null || event.beta === null) return;
-
-      if (gyroBaseAlpha === null) {
-        gyroBaseAlpha = event.alpha;
-      }
-
-      var alpha = event.alpha - gyroBaseAlpha;
-      var beta = event.beta;
-
-      var xRad = THREE.MathUtils.degToRad(beta - 70); // Compensazione inclinazione naturale mano
-      var yRad = THREE.MathUtils.degToRad(-alpha);
-      camera.rotation.set(xRad, yRad, 0, 'YXZ');
-    }
-
-    // 2. Movimento / Accelerometro (Pedometro)
-    function handleMotion(event) {
-      if (!isTrackingActive) return;
-
-      var acc = event.acceleration || event.accelerationIncludingGravity;
-      if (!acc || acc.x === null) return;
-
-      // Calcola il modulo dell'accelerazione vettoriale
-      var magnitude = Math.sqrt(acc.x * acc.x + acc.y * acc.y + acc.z * acc.z);
-      
-      // Se usiamo gravity, sottraiamo il valore statico 9.8
-      if (event.accelerationIncludingGravity && !event.acceleration) {
-        magnitude = Math.abs(magnitude - 9.81);
-      }
-
-      var delta = magnitude - lastAccelMagnitude;
-      lastAccelMagnitude = magnitude;
-
-      var now = performance.now();
-      // Un passo reale richiede almeno 300ms dal precedente per evitare falsi positivi
-      if (delta > stepThreshold && (now - lastStepTime) > 320) {
-        lastStepTime = now;
-        stepCount++;
-        stepCounterEl.textContent = 'Passi rilevati: ' + stepCount;
-
-        // Avanza nella direzione in cui si sta guardando/camminando
-        targetForwardStepMove += stepStrideLength;
-      }
-    }
-
-    async function toggleMotionTracking() {
-      if (isTrackingActive) {
-        isTrackingActive = false;
-        motionBtn.textContent = '🚶 Attiva Camminata & Giroscopio';
-        motionBtn.classList.remove('active');
-        window.removeEventListener('deviceorientation', handleOrientation);
-        window.removeEventListener('devicemotion', handleMotion);
-        return;
-      }
-
-      // Richiesta permessi iOS 13+ sia per orientamento che per accelerometro
-      var permGranted = true;
-
-      if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-        try {
-          var resOri = await DeviceOrientationEvent.requestPermission();
-          if (resOri !== 'granted') permGranted = false;
-        } catch (e) {
-          permGranted = false;
-        }
-      }
-
-      if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
-        try {
-          var resMot = await DeviceMotionEvent.requestPermission();
-          if (resMot !== 'granted') permGranted = false;
-        } catch (e) {
-          permGranted = false;
-        }
-      }
-
-      if (!permGranted) {
-        alert("Permessi per sensori di movimento non concessi.");
-        return;
-      }
-
-      // Avvia i sensori
-      isTrackingActive = true;
-      gyroBaseAlpha = null;
-      motionBtn.textContent = '🛑 Ferma Tracciamento';
-      motionBtn.classList.add('active');
-
-      window.addEventListener('deviceorientation', handleOrientation, true);
-      window.addEventListener('devicemotion', handleMotion, true);
-    }
-
-    motionBtn.addEventListener('click', toggleMotionTracking);
-
-    // --- COMANDI PC: TASTIERA WASD ---
-    var keys = { w: false, a: false, s: false, d: false, q: false, e: false };
-    window.addEventListener('keydown', function(e) {
-      var k = e.key.toLowerCase();
-      if (keys.hasOwnProperty(k)) keys[k] = true;
-    });
-    window.addEventListener('keyup', function(e) {
-      var k = e.key.toLowerCase();
-      if (keys.hasOwnProperty(k)) keys[k] = false;
-    });
-
-    // --- COMANDI PC: MOUSE ---
-    var isMouseDown = false;
-    var mouseX = 0, mouseY = 0;
-
-    window.addEventListener('mousedown', function(e) {
-      if (e.target.closest && e.target.closest('.top-right-bar')) return;
-      isMouseDown = true;
-      mouseX = e.clientX;
-      mouseY = e.clientY;
-    });
-    window.addEventListener('mouseup', function() { isMouseDown = false; });
-    window.addEventListener('mousemove', function(e) {
-      if (!isMouseDown || isTrackingActive) return;
-      var dx = e.clientX - mouseX;
-      var dy = e.clientY - mouseY;
-      mouseX = e.clientX;
-      mouseY = e.clientY;
-
-      yaw -= dx * 0.003;
-      pitch -= dy * 0.003;
-      pitch = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, pitch));
-      updateCameraManualRotation();
-    });
-
-    window.addEventListener('wheel', function(e) {
-      var dir = new THREE.Vector3();
-      camera.getWorldDirection(dir);
-      camera.position.addScaledVector(dir, e.deltaY * -0.003);
-    });
-
-    // --- TOUCH GESTURES (Mobile) ---
-    var touches = [];
-    var initialPinchDist = 0;
-    var lastTapTime = 0;
-
-    window.addEventListener('touchstart', function(e) {
-      if (e.target.closest && e.target.closest('.top-right-bar')) return;
-      touches = Array.from(e.touches);
-
-      // Doppio Tap: reset posizione e rotazione
-      if (e.touches.length === 1) {
-        var now = Date.now();
-        if (now - lastTapTime < 300) {
-          camera.position.copy(initialPos);
-          yaw = 0;
-          pitch = 0;
-          gyroBaseAlpha = null;
-          stepCount = 0;
-          stepCounterEl.textContent = 'Passi rilevati: 0';
-          updateCameraManualRotation();
-        }
-        lastTapTime = now;
-      }
-
-      if (e.touches.length === 2) {
-        initialPinchDist = getDistance(e.touches[0], e.touches[1]);
-      }
-    }, { passive: false });
-
-    window.addEventListener('touchmove', function(e) {
-      if (e.target.closest && e.target.closest('.top-right-bar')) return;
-      e.preventDefault();
-
-      // 1 Dito (se giroscopio non attivo)
-      if (e.touches.length === 1 && touches.length === 1 && !isTrackingActive) {
-        var dx = e.touches[0].clientX - touches[0].clientX;
-        var dy = e.touches[0].clientY - touches[0].clientY;
-
-        yaw -= dx * 0.004;
-        pitch -= dy * 0.004;
-        pitch = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, pitch));
-        updateCameraManualRotation();
-      }
-
-      // 2 Dita: Zoom e Pan
-      else if (e.touches.length === 2 && touches.length === 2) {
-        var currentDist = getDistance(e.touches[0], e.touches[1]);
-        var pinchDelta = currentDist - initialPinchDist;
-        var dir = new THREE.Vector3();
-        camera.getWorldDirection(dir);
-        camera.position.addScaledVector(dir, pinchDelta * 0.015);
-        initialPinchDist = currentDist;
-
-        var midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
-        var midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
-        var oldMidX = (touches[0].clientX + touches[1].clientX) / 2;
-        var oldMidY = (touches[0].clientY + touches[1].clientY) / 2;
-
-        var panX = (midX - oldMidX) * 0.01;
-        var panY = (midY - oldMidY) * 0.01;
-
-        var side = new THREE.Vector3();
-        side.crossVectors(camera.up, dir).normalize();
-        camera.position.addScaledVector(side, panX);
-        camera.position.y += panY;
-      }
-
-      touches = Array.from(e.touches);
-    }, { passive: false });
-
-    window.addEventListener('touchend', function(e) {
-      touches = Array.from(e.touches);
-    });
-
-    function getDistance(t1, t2) {
-      var dx = t1.clientX - t2.clientX;
-      var dy = t1.clientY - t2.clientY;
-      return Math.sqrt(dx * dx + dy * dy);
-    }
-
-    function updateCameraManualRotation() {
-      camera.rotation.set(0, 0, 0);
-      camera.rotation.y = yaw;
-      camera.rotation.x = pitch;
-    }
-
-    // --- CARICATORE FILE 3D (.glb / .gltf) ---
-    var loadingDiv = document.getElementById('loading');
-    var loader = new THREE.GLTFLoader();
-
-    function loadModel(sourceUrl) {
-      loadingDiv.style.display = 'block';
-      loadingDiv.innerText = 'Caricamento modello 3D in corso... (0%)';
-      loadingDiv.style.color = '#fff';
-
-      loader.load(
-        sourceUrl,
-        function(gltf) {
-          if (placeholder) {
-            scene.remove(placeholder);
-            placeholder = null;
-          }
-          if (currentModel) scene.remove(currentModel);
-
-          currentModel = gltf.scene;
-
-          var box = new THREE.Box3().setFromObject(currentModel);
-          var center = box.getCenter(new THREE.Vector3());
-          var size = box.getSize(new THREE.Vector3());
-          var maxDim = Math.max(size.x, size.y, size.z);
-          var scale = 3.0 / (maxDim || 1);
-
-          currentModel.scale.setScalar(scale);
-          currentModel.position.x = -center.x * scale;
-          currentModel.position.y = -box.min.y * scale;
-          currentModel.position.z = -center.z * scale;
-
-          scene.add(currentModel);
-          loadingDiv.style.display = 'none';
-        },
-        function(xhr) {
-          if (xhr.lengthComputable) {
-            var pct = Math.round((xhr.loaded / xhr.total) * 100);
-            loadingDiv.innerText = 'Caricamento modello 3D in corso... (' + pct + '%)';
-          }
-        },
-        function(err) {
-          loadingDiv.style.display = 'none';
-        }
-      );
-    }
-
-    loadModel('modello.glb');
-
-    document.getElementById('modelInput').addEventListener('change', function(e) {
+    // Caricamento dinamico di file .glb da PC o Smartphone
+    fileInput.addEventListener('change', function(e) {
       var file = e.target.files[0];
-      if (!file) return;
-      loadModel(URL.createObjectURL(file));
-    });
-
-    window.addEventListener('resize', function() {
-      camera.aspect = window.innerWidth / window.innerHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth, window.innerHeight);
-    });
-
-    // --- LOOP DI AGGIORNAMENTO E MOVIMENTO ---
-    var moveSpeed = 0.07;
-    function animate() {
-      requestAnimationFrame(animate);
-
-      var fwd = new THREE.Vector3();
-      camera.getWorldDirection(fwd);
-      fwd.y = 0;
-      fwd.normalize();
-
-      var side = new THREE.Vector3();
-      side.crossVectors(camera.up, fwd).normalize();
-
-      // 1. Spostamento fluido da passi reali rilevati
-      if (targetForwardStepMove > 0.01) {
-        var stepDelta = targetForwardStepMove * 0.12; // Interpolazione morbida
-        camera.position.addScaledVector(fwd, stepDelta);
-        targetForwardStepMove -= stepDelta;
+      if (file) {
+        var objectUrl = URL.createObjectURL(file);
+        viewer.src = objectUrl;
       }
+    });
 
-      // 2. Spostamento da tastiera PC
-      if (keys.w) camera.position.addScaledVector(fwd, moveSpeed);
-      if (keys.s) camera.position.addScaledVector(fwd, -moveSpeed);
-      if (keys.a) camera.position.addScaledVector(side, moveSpeed);
-      if (keys.d) camera.position.addScaledVector(side, -moveSpeed);
-      if (keys.e) camera.position.y += moveSpeed;
-      if (keys.q) camera.position.y = Math.max(0.1, camera.position.y - moveSpeed);
-
-      renderer.render(scene, camera);
-    }
-    animate();
+    // Se modello.glb non viene trovato all'avvio, carica un modello demo di fallback
+    viewer.addEventListener('error', function() {
+      if (!viewer.src.includes('Astronaut.glb')) {
+        viewer.src = 'https://modelviewer.dev/shared-assets/models/Astronaut.glb';
+      }
+    });
   </script>
+
 </body>
 </html>
