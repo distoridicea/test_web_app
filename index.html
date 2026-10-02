@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="it">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Viewer 3D</title>
+		<style>
+			* { box-sizing: border-box; margin: 0; padding: 0; font-family: sans-serif; }
+			body { background: #1a1a20; color: #fff; overflow: hidden; }
+
+			#webgl-canvas {
+			width: 100vw;
+			height: 100vh;
+			display: block;
+			}
+
+			.controls-overlay {
+			position: fixed;
+			top: 16px;
+			left: 16px;
+			background: rgba(10, 10, 15, 0.85);
+			border: 1px solid rgba(255, 255, 255, 0.15);
+			border-radius: 8px;
+			padding: 12px 16px;
+			font-size: 0.85rem;
+			line-height: 1.5;
+			user-select: none;
+			z-index: 100;
+			}
+			.controls-overlay b { color: #38bdf8; }
+
+			.top-right-bar {
+			position: fixed;
+			top: 16px;
+			right: 16px;
+			z-index: 100;
+			}
+
+			.btn-file {
+			display: inline-block;
+			background: #2563eb;
+			color: #fff;
+			padding: 10px 16px;
+			border-radius: 6px;
+			font-weight: 600;
+			cursor: pointer;
+			font-size: 0.9rem;
+			box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+			}
+			.btn-file:hover { background: #1d4ed8; }
+			#modelInput { display: none; }
+		</style>
+
+		<!-- Librerie Three.js -->
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+		<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+	</head>
+	<body>
+
+		<div class="controls-overlay">
+			<b>Controlli:</b><br />
+			• <b>W / S</b> : Avanti / Indietro<br />
+			• <b>A / D</b> : Sinistra / Destra<br />
+			• <b>Q / E</b> : Scendi / Sali<br />
+			• <b>Trascina col Mouse</b> : Ruota visuale<br />
+			• <b>Rotellina</b> : Zoom rapido
+		</div>
+
+		<div class="top-right-bar">
+			<label for="modelInput" class="btn-file">📁 Apri file .GLB / .GLTF</label>
+			<input type="file" id="modelInput" accept=".glb,.gltf" />
+		</div>
+
+		<div id="webgl-canvas"></div>
+
+		<script>
+			// 1. SCENA
+			var scene = new THREE.Scene();
+			scene.background = new THREE.Color(0x18181f);
+
+			// 2. CAMERA
+			var camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+			camera.position.set(0, 2, 5);
+
+			// 3. RENDERER
+			var container = document.getElementById('webgl-canvas');
+			var renderer = new THREE.WebGLRenderer({ antialias: true });
+			renderer.setSize(window.innerWidth, window.innerHeight);
+			renderer.setPixelRatio(1);
+			container.appendChild(renderer.domElement);
+
+			// 4. LUCI
+			var ambientLight = new THREE.AmbientLight(0xffffff, 0.9);
+			scene.add(ambientLight);
+
+			var dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+			dirLight.position.set(6, 12, 8);
+			scene.add(dirLight);
+
+			// 5. GRIGLIA E CUBO DI PROVA
+			var grid = new THREE.GridHelper(40, 40, 0x00f0ff, 0x3a3a4c);
+			scene.add(grid);
+
+			var boxGeo = new THREE.BoxGeometry(1.2, 1.2, 1.2);
+			var boxMat = new THREE.MeshStandardMaterial({ color: 0x3b82f6 });
+			var placeholder = new THREE.Mesh(boxGeo, boxMat);
+			placeholder.position.y = 0.6;
+			scene.add(placeholder);
+
+			// 6. TASTIERA
+			var keys = { w: false, a: false, s: false, d: false, q: false, e: false };
+			window.addEventListener('keydown', function(e) {
+			var k = e.key.toLowerCase();
+			if (keys.hasOwnProperty(k)) keys[k] = true;
+			});
+			window.addEventListener('keyup', function(e) {
+			var k = e.key.toLowerCase();
+			if (keys.hasOwnProperty(k)) keys[k] = false;
+			});
+
+			// 7. MOUSE
+			var isDragging = false;
+			var prevX = 0, prevY = 0;
+			var yaw = 0, pitch = 0;
+
+			window.addEventListener('mousedown', function(e) {
+			if (e.target.closest && e.target.closest('.top-right-bar')) return;
+			isDragging = true;
+			prevX = e.clientX;
+			prevY = e.clientY;
+			});
+
+			window.addEventListener('mouseup', function() { isDragging = false; });
+
+			window.addEventListener('mousemove', function(e) {
+			if (!isDragging) return;
+			var dx = e.clientX - prevX;
+			var dy = e.clientY - prevY;
+			prevX = e.clientX;
+			prevY = e.clientY;
+
+			yaw -= dx * 0.003;
+			pitch -= dy * 0.003;
+			pitch = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, pitch));
+
+			camera.rotation.set(0, 0, 0);
+			camera.rotation.y = yaw;
+			camera.rotation.x = pitch;
+			});
+
+			window.addEventListener('wheel', function(e) {
+			var dir = new THREE.Vector3();
+			camera.getWorldDirection(dir);
+			camera.position.addScaledVector(dir, e.deltaY * -0.003);
+			});
+
+			// 8. CARICAMENTO MODELLO
+			var loader = new THREE.GLTFLoader();
+			var loadedModel = null;
+
+			document.getElementById('modelInput').addEventListener('change', function(e) {
+			var file = e.target.files[0];
+			if (!file) return;
+
+			var fileUrl = URL.createObjectURL(file);
+			loader.load(fileUrl, function(gltf) {
+			if (placeholder) {
+			scene.remove(placeholder);
+			placeholder = null;
+			}
+			if (loadedModel) scene.remove(loadedModel);
+
+			loadedModel = gltf.scene;
+
+			var box = new THREE.Box3().setFromObject(loadedModel);
+			var center = box.getCenter(new THREE.Vector3());
+			var size = box.getSize(new THREE.Vector3());
+			var maxDim = Math.max(size.x, size.y, size.z);
+			var scale = 2.5 / (maxDim || 1);
+
+			loadedModel.scale.setScalar(scale);
+			loadedModel.position.x = -center.x * scale;
+			loadedModel.position.y = -box.min.y * scale;
+			loadedModel.position.z = -center.z * scale;
+
+			scene.add(loadedModel);
+			}, undefined, function(err) {
+			alert("Impossibile caricare il modello. Usa preferibilmente il formato .glb.");
+			});
+			});
+
+			window.addEventListener('resize', function() {
+			camera.aspect = window.innerWidth / window.innerHeight;
+			camera.updateProjectionMatrix();
+			renderer.setSize(window.innerWidth, window.innerHeight);
+			});
+
+			// 9. ANIMAZIONE
+			var moveSpeed = 0.07;
+			function animate() {
+			requestAnimationFrame(animate);
+
+			var fwd = new THREE.Vector3();
+			camera.getWorldDirection(fwd);
+			fwd.y = 0;
+			fwd.normalize();
+
+			var side = new THREE.Vector3();
+			side.crossVectors(camera.up, fwd).normalize();
+
+			if (keys.w) camera.position.addScaledVector(fwd, moveSpeed);
+			if (keys.s) camera.position.addScaledVector(fwd, -moveSpeed);
+			if (keys.a) camera.position.addScaledVector(side, moveSpeed);
+			if (keys.d) camera.position.addScaledVector(side, -moveSpeed);
+			if (keys.e) camera.position.y += moveSpeed;
+			if (keys.q) camera.position.y = Math.max(0.1, camera.position.y - moveSpeed);
+
+			renderer.render(scene, camera);
+			}
+			animate();
+		</script>
+	</body>
+</html>
