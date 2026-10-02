@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0" />
-  <title>Viewer 3D con Giroscopio</title>
+  <title>Viewer 3D - Giroscopio e Camminata Reale</title>
   <style>
     * { 
       box-sizing: border-box; 
@@ -20,7 +20,7 @@
       display: block;
     }
 
-    /* Istruzioni su schermo */
+    /* Riquadro istruzioni e contatore passi */
     .controls-overlay {
       position: fixed;
       top: 14px;
@@ -37,42 +37,52 @@
       pointer-events: none;
     }
     .controls-overlay b { color: #38bdf8; }
+    .step-badge {
+      display: inline-block;
+      margin-top: 4px;
+      background: #0284c7;
+      color: #fff;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-weight: bold;
+    }
 
-    /* Barra pulsanti in alto a destra */
+    /* Barra superiore comandi */
     .top-right-bar {
       position: fixed;
       top: 14px;
       right: 14px;
       display: flex;
+      flex-wrap: wrap;
       gap: 8px;
       z-index: 100;
+      justify-content: flex-end;
     }
 
     .btn-ui {
       display: inline-block;
       background: #2563eb;
       color: #fff;
-      padding: 10px 14px;
+      padding: 9px 12px;
       border-radius: 8px;
       font-weight: 600;
       cursor: pointer;
-      font-size: 0.82rem;
+      font-size: 0.8rem;
       box-shadow: 0 4px 12px rgba(0,0,0,0.35);
       border: 1px solid rgba(255,255,255,0.2);
     }
     .btn-ui:hover { background: #1d4ed8; }
 
-    .btn-gyro {
+    .btn-motion {
       background: #059669;
     }
-    .btn-gyro:hover { background: #047857; }
-    .btn-gyro.active {
-      background: #e11d48;
+    .btn-motion:hover { background: #047857; }
+    .btn-motion.active {
+      background: #dc2626;
     }
 
     #modelInput { display: none; }
 
-    /* Schermata di caricamento */
     #loading {
       position: fixed;
       top: 50%;
@@ -89,7 +99,6 @@
     }
   </style>
 
-  <!-- Librerie Three.js -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 </head>
@@ -99,13 +108,14 @@
 
   <div class="controls-overlay">
     <b>Controlli:</b><br />
-    • <b>PC</b>: WASD + Trascina Mouse<br />
-    • <b>Mobile</b>: 1 Dito ruota / 2 Dita zoom-pan<br />
-    • <b>Giroscopio</b>: Attivalo col pulsante verde
+    • <b>PC</b>: WASD + Mouse<br />
+    • <b>Mobile</b>: Touch gestures (Pinch/Pan)<br />
+    • <b>Cammina & Giroscopio</b>: Attiva col tasto verde<br />
+    <span class="step-badge" id="stepCounter">Passi rilevati: 0</span>
   </div>
 
   <div class="top-right-bar">
-    <button id="gyroBtn" class="btn-ui btn-gyro">🧭 Attiva Giroscopio</button>
+    <button id="motionBtn" class="btn-ui btn-motion">🚶 Attiva Camminata & Giroscopio</button>
     <label for="modelInput" class="btn-ui">📁 Carica .GLB</label>
     <input type="file" id="modelInput" accept=".glb,.gltf" />
   </div>
@@ -117,7 +127,7 @@
     scene.background = new THREE.Color(0x15151a);
 
     var camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-    var initialPos = new THREE.Vector3(0, 2, 5);
+    var initialPos = new THREE.Vector3(0, 1.7, 5); // Altezza occhi persona reale (1.70m)
     camera.position.copy(initialPos);
 
     var container = document.getElementById('webgl-canvas');
@@ -126,15 +136,15 @@
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     container.appendChild(renderer.domElement);
 
-    // Luci
+    // Illuminazione
     var ambientLight = new THREE.AmbientLight(0xffffff, 1.0);
     scene.add(ambientLight);
     var dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
     dirLight.position.set(6, 12, 8);
     scene.add(dirLight);
 
-    // Griglia pavimento
-    var grid = new THREE.GridHelper(40, 40, 0x00f0ff, 0x333344);
+    // Griglia pavimento estesa per camminare
+    var grid = new THREE.GridHelper(80, 80, 0x00f0ff, 0x333344);
     scene.add(grid);
 
     // Cubo segnaposto iniziale
@@ -147,69 +157,114 @@
     var currentModel = null;
     var yaw = 0, pitch = 0;
 
-    // --- GESTIONE GIROSCOPIO / DEVICE ORIENTATION ---
-    var isGyroActive = false;
-    var gyroAlpha = 0, gyroBeta = 0, gyroGamma = 0;
+    // --- SENSORI: GIROSCOPIO E RILEVATORE PASSI (STEP DETECTION) ---
+    var isTrackingActive = false;
     var gyroBaseAlpha = null;
-    var gyroBtn = document.getElementById('gyroBtn');
+    var motionBtn = document.getElementById('motionBtn');
+    var stepCounterEl = document.getElementById('stepCounter');
+    var stepCount = 0;
 
+    // Parametri per il filtro del pedometro inerziale
+    var lastAccelMagnitude = 0;
+    var stepThreshold = 1.35; // Soglia picco accelerazione per rilevare il passo
+    var lastStepTime = 0;
+    var stepStrideLength = 0.65; // Lunghezza media di un passo (0.65 metri)
+    var targetForwardStepMove = 0;
+
+    // 1. Orientamento (Giroscopio)
     function handleOrientation(event) {
-      if (!isGyroActive) return;
+      if (!isTrackingActive) return;
       if (event.alpha === null || event.beta === null) return;
 
       if (gyroBaseAlpha === null) {
-        gyroBaseAlpha = event.alpha; // Calibra sullo sguardo iniziale
+        gyroBaseAlpha = event.alpha;
       }
 
-      gyroAlpha = event.alpha - gyroBaseAlpha;
-      gyroBeta = event.beta;
-      gyroGamma = event.gamma;
+      var alpha = event.alpha - gyroBaseAlpha;
+      var beta = event.beta;
 
-      // Conversione angoli orientamento dispositivo in rotazione Euleriana
-      var xRad = THREE.MathUtils.degToRad(gyroBeta - 60); // inclinazione naturale tenendo il telefono
-      var yRad = THREE.MathUtils.degToRad(-gyroAlpha);
+      var xRad = THREE.MathUtils.degToRad(beta - 70); // Compensazione inclinazione naturale mano
+      var yRad = THREE.MathUtils.degToRad(-alpha);
       camera.rotation.set(xRad, yRad, 0, 'YXZ');
     }
 
-    async function toggleGyroscope() {
-      if (isGyroActive) {
-        isGyroActive = false;
-        gyroBtn.textContent = '🧭 Attiva Giroscopio';
-        gyroBtn.classList.remove('active');
+    // 2. Movimento / Accelerometro (Pedometro)
+    function handleMotion(event) {
+      if (!isTrackingActive) return;
+
+      var acc = event.acceleration || event.accelerationIncludingGravity;
+      if (!acc || acc.x === null) return;
+
+      // Calcola il modulo dell'accelerazione vettoriale
+      var magnitude = Math.sqrt(acc.x * acc.x + acc.y * acc.y + acc.z * acc.z);
+      
+      // Se usiamo gravity, sottraiamo il valore statico 9.8
+      if (event.accelerationIncludingGravity && !event.acceleration) {
+        magnitude = Math.abs(magnitude - 9.81);
+      }
+
+      var delta = magnitude - lastAccelMagnitude;
+      lastAccelMagnitude = magnitude;
+
+      var now = performance.now();
+      // Un passo reale richiede almeno 300ms dal precedente per evitare falsi positivi
+      if (delta > stepThreshold && (now - lastStepTime) > 320) {
+        lastStepTime = now;
+        stepCount++;
+        stepCounterEl.textContent = 'Passi rilevati: ' + stepCount;
+
+        // Avanza nella direzione in cui si sta guardando/camminando
+        targetForwardStepMove += stepStrideLength;
+      }
+    }
+
+    async function toggleMotionTracking() {
+      if (isTrackingActive) {
+        isTrackingActive = false;
+        motionBtn.textContent = '🚶 Attiva Camminata & Giroscopio';
+        motionBtn.classList.remove('active');
         window.removeEventListener('deviceorientation', handleOrientation);
+        window.removeEventListener('devicemotion', handleMotion);
         return;
       }
 
-      // 1. Controllo supporto iOS 13+ (richiede esplicita autorizzazione con Promise)
+      // Richiesta permessi iOS 13+ sia per orientamento che per accelerometro
+      var permGranted = true;
+
       if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
         try {
-          var response = await DeviceOrientationEvent.requestPermission();
-          if (response === 'granted') {
-            startGyro();
-          } else {
-            alert('Permesso per il giroscopio negato.');
-          }
+          var resOri = await DeviceOrientationEvent.requestPermission();
+          if (resOri !== 'granted') permGranted = false;
         } catch (e) {
-          alert('Errore richiesta sensori: ' + e);
+          permGranted = false;
         }
-      } 
-      // 2. Dispositivi Android e altri standard (non richiedono API requestPermission)
-      else if ('ondeviceorientation' in window) {
-        startGyro();
-      } else {
-        alert('Il giroscopio non è supportato su questo browser o dispositivo.');
       }
-    }
 
-    function startGyro() {
-      isGyroActive = true;
+      if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+        try {
+          var resMot = await DeviceMotionEvent.requestPermission();
+          if (resMot !== 'granted') permGranted = false;
+        } catch (e) {
+          permGranted = false;
+        }
+      }
+
+      if (!permGranted) {
+        alert("Permessi per sensori di movimento non concessi.");
+        return;
+      }
+
+      // Avvia i sensori
+      isTrackingActive = true;
       gyroBaseAlpha = null;
-      gyroBtn.textContent = '🛑 Ferma Giroscopio';
-      gyroBtn.classList.add('active');
+      motionBtn.textContent = '🛑 Ferma Tracciamento';
+      motionBtn.classList.add('active');
+
       window.addEventListener('deviceorientation', handleOrientation, true);
+      window.addEventListener('devicemotion', handleMotion, true);
     }
 
-    gyroBtn.addEventListener('click', toggleGyroscope);
+    motionBtn.addEventListener('click', toggleMotionTracking);
 
     // --- COMANDI PC: TASTIERA WASD ---
     var keys = { w: false, a: false, s: false, d: false, q: false, e: false };
@@ -234,7 +289,7 @@
     });
     window.addEventListener('mouseup', function() { isMouseDown = false; });
     window.addEventListener('mousemove', function(e) {
-      if (!isMouseDown || isGyroActive) return; // Se il giroscopio è attivo, orienta il telefono
+      if (!isMouseDown || isTrackingActive) return;
       var dx = e.clientX - mouseX;
       var dy = e.clientY - mouseY;
       mouseX = e.clientX;
@@ -252,7 +307,7 @@
       camera.position.addScaledVector(dir, e.deltaY * -0.003);
     });
 
-    // --- TOUCH GESTURES (Smartphone) ---
+    // --- TOUCH GESTURES (Mobile) ---
     var touches = [];
     var initialPinchDist = 0;
     var lastTapTime = 0;
@@ -261,7 +316,7 @@
       if (e.target.closest && e.target.closest('.top-right-bar')) return;
       touches = Array.from(e.touches);
 
-      // Doppio Tap: reset visuale
+      // Doppio Tap: reset posizione e rotazione
       if (e.touches.length === 1) {
         var now = Date.now();
         if (now - lastTapTime < 300) {
@@ -269,6 +324,8 @@
           yaw = 0;
           pitch = 0;
           gyroBaseAlpha = null;
+          stepCount = 0;
+          stepCounterEl.textContent = 'Passi rilevati: 0';
           updateCameraManualRotation();
         }
         lastTapTime = now;
@@ -283,8 +340,8 @@
       if (e.target.closest && e.target.closest('.top-right-bar')) return;
       e.preventDefault();
 
-      // 1 Dito (solo se il giroscopio NON è già attivo)
-      if (e.touches.length === 1 && touches.length === 1 && !isGyroActive) {
+      // 1 Dito (se giroscopio non attivo)
+      if (e.touches.length === 1 && touches.length === 1 && !isTrackingActive) {
         var dx = e.touches[0].clientX - touches[0].clientX;
         var dy = e.touches[0].clientY - touches[0].clientY;
 
@@ -294,7 +351,7 @@
         updateCameraManualRotation();
       }
 
-      // 2 Dita: Zoom e Pan (sempre attivi anche col giroscopio)
+      // 2 Dita: Zoom e Pan
       else if (e.touches.length === 2 && touches.length === 2) {
         var currentDist = getDistance(e.touches[0], e.touches[1]);
         var pinchDelta = currentDist - initialPinchDist;
@@ -387,8 +444,7 @@
     document.getElementById('modelInput').addEventListener('change', function(e) {
       var file = e.target.files[0];
       if (!file) return;
-      var fileBlobUrl = URL.createObjectURL(file);
-      loadModel(fileBlobUrl);
+      loadModel(URL.createObjectURL(file));
     });
 
     window.addEventListener('resize', function() {
@@ -397,7 +453,7 @@
       renderer.setSize(window.innerWidth, window.innerHeight);
     });
 
-    // LOOP ANIMAZIONE
+    // --- LOOP DI AGGIORNAMENTO E MOVIMENTO ---
     var moveSpeed = 0.07;
     function animate() {
       requestAnimationFrame(animate);
@@ -410,6 +466,14 @@
       var side = new THREE.Vector3();
       side.crossVectors(camera.up, fwd).normalize();
 
+      // 1. Spostamento fluido da passi reali rilevati
+      if (targetForwardStepMove > 0.01) {
+        var stepDelta = targetForwardStepMove * 0.12; // Interpolazione morbida
+        camera.position.addScaledVector(fwd, stepDelta);
+        targetForwardStepMove -= stepDelta;
+      }
+
+      // 2. Spostamento da tastiera PC
       if (keys.w) camera.position.addScaledVector(fwd, moveSpeed);
       if (keys.s) camera.position.addScaledVector(fwd, -moveSpeed);
       if (keys.a) camera.position.addScaledVector(side, moveSpeed);
