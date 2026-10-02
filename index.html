@@ -3,9 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <title>Viewer 3D con ARKit & ARCore</title>
+  <title>ARKit & ARCore Web Viewer</title>
 
-  <!-- Componente ufficiale Web 3D & AR di Google (supporta ARKit su iOS e ARCore su Android) -->
   <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.5.0/model-viewer.min.js"></script>
 
   <style>
@@ -17,164 +16,134 @@
     }
 
     body {
-      background-color: #121216;
-      color: #ffffff;
+      background-color: #0f1015;
+      color: #fff;
       height: 100vh;
       overflow: hidden;
-      display: flex;
-      flex-direction: column;
     }
 
-    /* Area principale del viewer 3D */
     model-viewer {
       width: 100vw;
       height: 100vh;
-      background: radial-gradient(circle at 50% 50%, #20202a 0%, #121216 100%);
       --poster-color: transparent;
     }
 
-    /* Barra superiore comandi */
-    .top-bar {
+    /* Barra superiore informativa */
+    .top-panel {
       position: fixed;
-      top: 16px;
-      left: 16px;
-      right: 16px;
+      top: 14px;
+      left: 14px;
+      right: 14px;
       display: flex;
       justify-content: space-between;
       align-items: center;
       z-index: 100;
-      pointer-events: none;
     }
 
-    .badge-info {
-      background: rgba(18, 18, 24, 0.85);
+    .status-pill {
+      background: rgba(20, 20, 30, 0.85);
       border: 1px solid rgba(255, 255, 255, 0.15);
       padding: 8px 14px;
       border-radius: 20px;
       font-size: 0.8rem;
-      backdrop-filter: blur(6px);
-      pointer-events: auto;
+      backdrop-filter: blur(8px);
     }
-    .badge-info b { color: #38bdf8; }
+    .status-pill span { color: #38bdf8; font-weight: bold; }
 
-    .btn-file {
-      background: #2563eb;
-      color: white;
-      padding: 9px 15px;
-      border-radius: 8px;
-      font-weight: 600;
-      font-size: 0.85rem;
-      cursor: pointer;
-      border: 1px solid rgba(255,255,255,0.2);
-      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-      pointer-events: auto;
-    }
-    .btn-file:hover { background: #1d4ed8; }
-    #fileInput { display: none; }
-
-    /* Pulsante personalizzato per entrare in ARKit */
-    #ar-button {
-      background-color: #ffffff;
-      color: #0f172a;
-      border-radius: 30px;
-      border: none;
+    /* Pulsante AR ben visibile in basso */
+    #custom-ar-button {
       position: fixed;
-      bottom: 24px;
+      bottom: 30px;
       left: 50%;
       transform: translateX(-50%);
-      padding: 12px 24px;
-      font-size: 0.95rem;
+      background: #ffffff;
+      color: #000000;
+      border: none;
+      padding: 14px 28px;
+      border-radius: 30px;
       font-weight: 700;
-      box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+      font-size: 0.95rem;
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.5);
       cursor: pointer;
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 10px;
       z-index: 100;
-      transition: transform 0.2s, background-color 0.2s;
     }
-    #ar-button:hover {
-      background-color: #f1f5f9;
-      transform: translateX(-50%) scale(1.03);
-    }
-    #ar-button:active {
-      transform: translateX(-50%) scale(0.97);
+    #custom-ar-button:active {
+      transform: translateX(-50%) scale(0.96);
     }
 
-    /* Stile indicatore di puntamento AR */
-    #ar-prompt {
-      position: absolute;
-      left: 50%;
+    /* Messaggio di errore o diagnostica */
+    #diag-msg {
+      position: fixed;
       bottom: 90px;
+      left: 50%;
       transform: translateX(-50%);
+      background: rgba(220, 38, 38, 0.9);
+      color: white;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 0.8rem;
       display: none;
-    }
-    model-viewer[ar-status="session-started"] > #ar-prompt {
-      display: block;
+      z-index: 100;
+      text-align: center;
+      max-width: 90%;
     }
   </style>
 </head>
 <body>
 
-  <div class="top-bar">
-    <div class="badge-info">
-      📱 <b>ARKit & ARCore</b> supportati
-    </div>
-    <div>
-      <label for="fileInput" class="btn-file">📁 Carica .GLB</label>
-      <input type="file" id="fileInput" accept=".glb,.gltf" />
+  <div class="top-panel">
+    <div class="status-pill">
+      Dispositivo: <span id="arSupportText">Verifica AR...</span>
     </div>
   </div>
 
+  <div id="diag-msg"></div>
+
   <!-- 
-    Attributi ARKit / ARCore chiave:
-    - ar: abilita la realtà aumentata
-    - ar-modes="webxr scene-viewer quick-look":
-        * quick-look = ARKit nativo per iOS (iPhone/iPad)
-        * scene-viewer / webxr = ARCore per Android
-    - camera-controls: rotazione e zoom fluido con dita o mouse
-    - shadow-intensity: proietta l'ombra del modello sul pavimento reale
+    Modello di prova ufficiale con supporto sia per GLB (Android/PC) sia per USDZ (Apple ARKit nativo)
   -->
   <model-viewer id="viewer"
-    src="modello.glb"
+    src="https://modelviewer.dev/shared-assets/models/Astronaut.glb"
+    ios-src="https://modelviewer.dev/shared-assets/models/Astronaut.usdz"
     alt="Modello 3D con ARKit"
     ar
-    ar-modes="webxr scene-viewer quick-look"
+    ar-modes="quick-look scene-viewer webxr"
     ar-scale="auto"
     camera-controls
     touch-action="pan-y"
     shadow-intensity="1.5"
-    shadow-softness="0.8"
-    exposure="1.0"
     auto-rotate>
 
-    <!-- Pulsante AR personalizzato -->
-    <button slot="ar-button" id="ar-button">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M4 8V4m0 0h4M4 4l5 5m11-5h-4m4 0v4m0-4l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/>
-      </svg>
-      Vedi nel tuo spazio reale (AR)
+    <button slot="ar-button" id="custom-ar-button">
+      📸 Apri Fotocamera (AR)
     </button>
 
   </model-viewer>
 
   <script>
     var viewer = document.getElementById('viewer');
-    var fileInput = document.getElementById('fileInput');
+    var statusText = document.getElementById('arSupportText');
+    var diagMsg = document.getElementById('diag-msg');
 
-    // Caricamento dinamico di file .glb da PC o Smartphone
-    fileInput.addEventListener('change', function(e) {
-      var file = e.target.files[0];
-      if (file) {
-        var objectUrl = URL.createObjectURL(file);
-        viewer.src = objectUrl;
+    // Verifica se il browser/dispositivo è pronto per AR
+    viewer.addEventListener('load', function() {
+      if (viewer.canActivateAR) {
+        statusText.innerText = 'Pronto per ARKit / ARCore ✅';
+        statusText.style.color = '#4ade80';
+      } else {
+        statusText.innerText = 'AR non supportata o disattivata ⚠️';
+        statusText.style.color = '#f87171';
       }
     });
 
-    // Se modello.glb non viene trovato all'avvio, carica un modello demo di fallback
-    viewer.addEventListener('error', function() {
-      if (!viewer.src.includes('Astronaut.glb')) {
-        viewer.src = 'https://modelviewer.dev/shared-assets/models/Astronaut.glb';
+    // Se l'avvio AR fallisce, mostra a schermo il motivo esatto
+    viewer.addEventListener('ar-status', function(event) {
+      if (event.detail.status === 'failed') {
+        diagMsg.style.display = 'block';
+        diagMsg.innerText = 'Impossibile avviare la fotocamera. Controlla i permessi di Safari o carica un file con URL pubblico.';
       }
     });
   </script>
