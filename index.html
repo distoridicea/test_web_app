@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <title>ARKit & ARCore Web Viewer</title>
+  <title>Viewer 3D & AR Completo</title>
 
   <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.5.0/model-viewer.min.js"></script>
 
@@ -25,11 +25,12 @@
     model-viewer {
       width: 100vw;
       height: 100vh;
+      background: radial-gradient(circle at 50% 50%, #22222e 0%, #0f1015 100%);
       --poster-color: transparent;
     }
 
-    /* Barra superiore informativa */
-    .top-panel {
+    /* Barra superiore comandi */
+    .top-bar {
       position: fixed;
       top: 14px;
       left: 14px;
@@ -38,28 +39,47 @@
       justify-content: space-between;
       align-items: center;
       z-index: 100;
+      pointer-events: none;
     }
 
-    .status-pill {
+    .badge-status {
       background: rgba(20, 20, 30, 0.85);
       border: 1px solid rgba(255, 255, 255, 0.15);
       padding: 8px 14px;
       border-radius: 20px;
       font-size: 0.8rem;
       backdrop-filter: blur(8px);
+      pointer-events: auto;
     }
-    .status-pill span { color: #38bdf8; font-weight: bold; }
+    .badge-status span { color: #38bdf8; font-weight: bold; }
 
-    /* Pulsante AR ben visibile in basso */
-    #custom-ar-button {
+    /* Pulsante Carica GLB in alto a destra */
+    .btn-file {
+      background: #2563eb;
+      color: white;
+      padding: 9px 15px;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 0.85rem;
+      cursor: pointer;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+      pointer-events: auto;
+      display: inline-block;
+    }
+    .btn-file:hover { background: #1d4ed8; }
+    #modelInput { display: none; }
+
+    /* Pulsante Fotocamera AR fisso sempre visibile in basso */
+    #manual-ar-btn {
       position: fixed;
-      bottom: 30px;
+      bottom: 28px;
       left: 50%;
       transform: translateX(-50%);
       background: #ffffff;
-      color: #000000;
+      color: #0b0f19;
       border: none;
-      padding: 14px 28px;
+      padding: 14px 26px;
       border-radius: 30px;
       font-weight: 700;
       font-size: 0.95rem;
@@ -69,81 +89,155 @@
       align-items: center;
       gap: 10px;
       z-index: 100;
+      transition: transform 0.15s, background-color 0.15s;
     }
-    #custom-ar-button:active {
+    #manual-ar-btn:active {
       transform: translateX(-50%) scale(0.96);
     }
+    #manual-ar-btn svg {
+      width: 20px;
+      height: 20px;
+    }
 
-    /* Messaggio di errore o diagnostica */
-    #diag-msg {
+    /* Finestra notifiche / diagnostica */
+    #toast-msg {
       position: fixed;
       bottom: 90px;
       left: 50%;
       transform: translateX(-50%);
-      background: rgba(220, 38, 38, 0.9);
-      color: white;
-      padding: 8px 16px;
+      background: rgba(30, 30, 40, 0.95);
+      color: #fff;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      padding: 10px 18px;
       border-radius: 8px;
-      font-size: 0.8rem;
+      font-size: 0.82rem;
       display: none;
       z-index: 100;
       text-align: center;
       max-width: 90%;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
     }
   </style>
 </head>
 <body>
 
-  <div class="top-panel">
-    <div class="status-pill">
-      Dispositivo: <span id="arSupportText">Verifica AR...</span>
+  <!-- Barra Superiore con Stato e Caricamento File -->
+  <div class="top-bar">
+    <div class="badge-status">
+      Stato: <span id="statusLabel">Inizializzazione...</span>
+    </div>
+
+    <div>
+      <label for="modelInput" class="btn-file">📁 Carica .GLB</label>
+      <input type="file" id="modelInput" accept=".glb,.gltf" />
     </div>
   </div>
 
-  <div id="diag-msg"></div>
+  <div id="toast-msg"></div>
 
-  <!-- 
-    Modello di prova ufficiale con supporto sia per GLB (Android/PC) sia per USDZ (Apple ARKit nativo)
-  -->
+  <!-- Pulsante AR sempre in primo piano, non vincolato ai comportamenti nascosti di model-viewer -->
+  <button id="manual-ar-btn">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+      <circle cx="12" cy="13" r="4"/>
+    </svg>
+    Apri Fotocamera (AR)
+  </button>
+
+  <!-- Componente 3D -->
   <model-viewer id="viewer"
     src="https://modelviewer.dev/shared-assets/models/Astronaut.glb"
     ios-src="https://modelviewer.dev/shared-assets/models/Astronaut.usdz"
-    alt="Modello 3D con ARKit"
+    alt="Visualizzatore 3D e AR"
     ar
     ar-modes="quick-look scene-viewer webxr"
     ar-scale="auto"
     camera-controls
     touch-action="pan-y"
     shadow-intensity="1.5"
+    shadow-softness="0.8"
     auto-rotate>
-
-    <button slot="ar-button" id="custom-ar-button">
-      📸 Apri Fotocamera (AR)
-    </button>
-
   </model-viewer>
 
   <script>
     var viewer = document.getElementById('viewer');
-    var statusText = document.getElementById('arSupportText');
-    var diagMsg = document.getElementById('diag-msg');
+    var statusLabel = document.getElementById('statusLabel');
+    var modelInput = document.getElementById('modelInput');
+    var arBtn = document.getElementById('manual-ar-btn');
+    var toast = document.getElementById('toast-msg');
 
-    // Verifica se il browser/dispositivo è pronto per AR
+    function showToast(text, duration) {
+      toast.innerText = text;
+      toast.style.display = 'block';
+      setTimeout(function() {
+        toast.style.display = 'none';
+      }, duration || 4000);
+    }
+
+    // 1. CARICAMENTO FILE .GLB / .GLTF DAL DISPOSITIVO
+    var isLocalFileLoaded = false;
+
+    modelInput.addEventListener('change', function(e) {
+      var file = e.target.files[0];
+      if (!file) return;
+
+      var blobUrl = URL.createObjectURL(file);
+      viewer.src = blobUrl;
+      // Per i file caricati al volo da selettore, rimuoviamo ios-src precedente
+      viewer.removeAttribute('ios-src');
+      isLocalFileLoaded = true;
+
+      statusLabel.innerText = 'Modello locale caricato';
+      statusLabel.style.color = '#4ade80';
+      showToast('Modello ' + file.name + ' caricato con successo!', 3000);
+    });
+
+    // 2. VERIFICA DISPONIBILITÀ AR
     viewer.addEventListener('load', function() {
       if (viewer.canActivateAR) {
-        statusText.innerText = 'Pronto per ARKit / ARCore ✅';
-        statusText.style.color = '#4ade80';
+        statusLabel.innerText = 'ARKit / ARCore Pronto ✅';
+        statusLabel.style.color = '#4ade80';
       } else {
-        statusText.innerText = 'AR non supportata o disattivata ⚠️';
-        statusText.style.color = '#f87171';
+        var isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+        if (isMobile) {
+          statusLabel.innerText = 'Dispositivo Mobile pronto';
+        } else {
+          statusLabel.innerText = 'Modalità Desktop 3D';
+        }
       }
     });
 
-    // Se l'avvio AR fallisce, mostra a schermo il motivo esatto
-    viewer.addEventListener('ar-status', function(event) {
-      if (event.detail.status === 'failed') {
-        diagMsg.style.display = 'block';
-        diagMsg.innerText = 'Impossibile avviare la fotocamera. Controlla i permessi di Safari o carica un file con URL pubblico.';
+    // 3. GESTIONE CLICK PULSANTE FOTOCAMERA (AR)
+    arBtn.addEventListener('click', function() {
+      var isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+      if (!isMobile) {
+        showToast('⚠️ La fotocamera ARKit/ARCore è supportata su smartphone (iPhone con Safari o Android con Chrome).', 4500);
+        return;
+      }
+
+      // Se su iPhone stiamo cercando di usare l'AR su un file locale caricato via input file
+      var isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+      if (isIOS && isLocalFileLoaded) {
+        showToast('Su iOS, Quick Look richiede che il file sia hostato online (su GitHub o server) e non come file temporaneo locale.', 5000);
+      }
+
+      // Prova ad attivare la sessione nativa AR
+      try {
+        if (viewer.canActivateAR) {
+          viewer.activateAR();
+        } else {
+          // Forza il trigger su model-viewer
+          viewer.activateAR();
+        }
+      } catch (err) {
+        showToast('Errore attivazione AR: ' + err.message, 4000);
+      }
+    });
+
+    viewer.addEventListener('ar-status', function(e) {
+      if (e.detail.status === 'failed') {
+        showToast('Impossibile accedere alla fotocamera. Verifica i permessi della fotocamera su Safari/Chrome.', 5000);
       }
     });
   </script>
